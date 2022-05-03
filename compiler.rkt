@@ -424,3 +424,237 @@
         (set! reduced-productions (append reduced-productions  (list (list (token-kind (first input)) (token-lexeme (first input))))))
         (derive (rest input)))
     (show-error "Parse" (string-append "Token Failure at " (number->string seen-input))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; STEP 3: CONTEXT SENSITIVE ANALYZER
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define offset 0)
+(define label-counter 0)
+(define first-arg INT)
+
+(define (recurse-parse-tree children)
+    (if (empty? children) empty
+    (cons (make-parse-tree) (recurse-parse-tree (rest children)))))
+
+(define (add-parse-tree line)
+    (list (first line) (rest line) (recurse-parse-tree (rest line))))
+
+(define (make-parse-tree-checked)
+    (define line (first parsed))
+    (define strings (string-split line))
+    (set! parsed (rest parsed))
+    (if (char-upper-case? (first (string->list line))) (token (first strings) (second strings))
+    (add-parse-tree strings)))
+
+(define (make-parse-tree)
+    (if (empty? parsed) (show-error "Context Analysis" "Insufficient tokens are parsed")
+        (make-parse-tree-checked)))
+
+(define (get-type dcl)
+    (if (equal? 1 (length (second (first dcl))))
+    INT INT*))
+
+(define (get-id dcl)
+    (token-lexeme (second dcl)))
+
+(define (add-dcl hash parameter)
+    (define id (get-id parameter))
+    (if (hash-has-key? hash id)
+        (show-error "Context Analysis" (string-append id " is Already Declared"))
+    (begin
+        (hash-set! hash (get-id parameter) (list (get-type parameter) offset))
+        (set! offset (- offset 4)))))
+
+(define (add-paramlist signature variables paramlist)
+    (define parameter (third (first (third paramlist))))
+    (add-dcl variables parameter)
+    (set! signature (append signature (list (get-type parameter))))
+
+    (if (equal? 1 (length (second paramlist))) signature
+    (add-paramlist signature variables (third (third paramlist)))))
+
+(define (add-procedure procedure)
+    (define name (string-append "ff" (token-lexeme (second procedure))))
+    (define variables (make-hash))
+    (define params (fourth procedure))
+    (define signature (list))
+
+    (if (hash-has-key? master name) (show-error "Context Analysis" (string-append name " is Already Declared"))
+    (if (empty? (second params)) (void)
+        (set! signature (add-paramlist signature variables (first (third params))))))
+
+    (make-variables variables (seventh procedure))
+    (hash-set! master name (list signature variables))
+
+    (check-use variables (eighth procedure))
+    (check-use variables (tenth procedure))
+
+    (check-statements-type variables (eighth procedure))
+    (is-expr-type variables (tenth procedure) INT true))
+
+(define (add-body-dcl hash dcl)
+    (define parameter (third (second dcl)))
+    (define set-value (if (equal? (token-kind (fourth dcl)) "NUM") INT INT*))
+    (define dcl-type (get-type parameter))
+    (if (equal? set-value dcl-type)
+        (add-dcl hash parameter) (show-error "Context Analysis" "Invalid Declaration of Variable Type")))
+
+(define (make-variables hash dcls)
+    (if (empty? (second dcls))
+        (void)
+        (begin
+        (make-variables hash (first (third dcls)))
+        (add-body-dcl hash (third dcls)))))
+
+(define (check-children hash ls)
+    (if (empty? ls) (void)
+    (begin
+    (check-use hash (first ls))
+    (check-children hash (rest ls)))))
+
+(define (check-procedure hash ls)
+    (define used-name (token-lexeme (first (third ls))))
+    (if (hash-has-key? hash used-name) (show-error "Context Analysis" (string-append used-name " is Recognized as Variables"))
+    (if (not (hash-has-key? master used-name))
+        (show-error "Context Analysis" (string-append used-name " Function is Not Defined")) (void))))
+
+(define (check-use hash ls)
+    (if (not (token? ls))
+    (if (and (equal? (first ls) "factor") (> (length (second ls)) 1) (equal? (first (second ls)) "ID") (equal? (second (second ls)) "LPAREN")) (check-procedure hash ls)
+    (check-children hash (third ls)))
+    (if (and (equal? (token-kind ls) "ID") (not (hash-has-key? hash (token-lexeme ls)))) (show-error "Context Analysis" "Failure in Recursive Verification") (void))))
+
+(define (convert-type type)
+    (if (equal? type INT) "INT" "INT*"))
+
+(define (add-main main)
+    (define name "ffmain")
+    (define variables (make-hash))
+    (define parameter1 (third (fourth main)))
+    (define parameter2 (third (sixth main)))
+    (define signature (list (get-type parameter1) (get-type parameter2)))
+    (if (or (equal? (first signature) INT*) (equal? (second signature) INT*)) (show-error "Type" "MAIN parameters must be of type INT") (void))
+
+    (add-dcl variables parameter1)
+    (add-dcl variables parameter2)
+    (make-variables variables (ninth main))
+    (hash-set! master name (list signature variables))
+
+    (check-use variables (tenth main))
+    (check-use variables (tenth (rest (rest main))))
+    
+    (check-statements-type variables (tenth main))
+    (is-expr-type variables (tenth (rest (rest main))) INT true))
+
+(define (make-master procedures)
+    (if (equal? 1 (length (second procedures)))
+        (add-main (third (first (third procedures))))
+        (begin
+        (add-procedure (third (first (third procedures))))
+        (make-master (second (third procedures))))))
+
+(define (parse-types types)
+    (if (empty? types) empty
+    (cons
+        (if (zero? (first types)) "int" "int*")
+        (parse-types (rest types)))))
+
+(define (print-master)
+    (hash-for-each master (lambda (procedure value)
+        (fprintf (current-error-port) (string-append procedure ": " (string-join (parse-types (first value))) "\n"))
+        
+        (hash-for-each (second value) (lambda (variable value)
+            (fprintf (current-error-port) (string-append variable " " (if (zero? value) "int" "int*") "\n"))))
+        (void))))
+
+(define (get-id-type variables id)
+    (first (hash-ref variables (token-lexeme id))))
+
+(define (get-arglist-types variables arglist)
+    (cons (get-expr-type variables (first (third arglist)))
+    (if (equal? (length (second arglist)) 1)
+         empty
+         (get-arglist-types variables (third (third arglist))))))
+
+(define (get-factor-type variables factor)
+    (define first-child (first (second factor)))
+    (if (equal? first-child "NUM") INT
+    (if (equal? first-child "NULL") INT*
+    (if (equal? first-child "LPAREN") (get-expr-type variables (second (third factor)))
+    (if (equal? first-child "AMP") INT*
+    (if (and (equal? first-child "STAR") (is-factor-type variables (second (third factor)) INT*)) INT
+    (if (and (equal? first-child "NEW") (is-expr-type variables (fourth (third factor)) INT false)) INT*
+    (if (equal? first-child "ID")
+        (if (empty? (rest (second factor))) (get-id-type variables (first (third factor)))
+        (if (and (equal? (third (second factor)) "RPAREN") (is-procedure variables (first (third factor)) (list))) INT
+        (if (and (equal? (third (second factor)) "arglist") (is-procedure variables (first (third factor)) (third (third factor)))) INT (show-error "Context Analysis" "Unable to get type of a factor"))))
+    (show-error "Context Analysis" "Unable to get type of a factor")))))))))
+
+(define (get-term-type variables term)
+    (define first-child (first (second term)))
+    (if (equal? first-child "factor") (get-factor-type variables (first (third term)))
+    (if (and (is-term-type variables (first (third term)) INT) (is-factor-type variables (third (third term)) INT)) INT
+    (show-error "Context Analysis" "Unable to get type of a term"))))
+
+(define (get-case-expr-type variables expr)
+    (define first-type (get-expr-type variables (first (third expr))))
+    (define operator (token-kind (second (third expr))))
+    (define second-type (get-term-type variables (third (third expr))))
+
+    (if (equal? first-type second-type)
+        (if (and (equal? operator "PLUS") (equal? first-type INT*)) (show-error "Context Analysis" "Unable to get type of expression") INT)
+        (if (and (equal? operator "MINUS") (equal? first-type INT)) (show-error "Context Analysis" "Unable to get type of expression") INT*)))
+
+(define (get-expr-type variables expr)
+    (define first-child (first (second expr)))
+    (if (equal? first-child "term") (get-term-type variables (first (third expr)))
+    (get-case-expr-type variables expr)))
+
+(define (get-lvalue-type variables lvalue)
+    (define first-child (first (second lvalue)))
+    (if (equal? first-child "ID") (get-id-type variables (first (third lvalue)))
+    (if (and (equal? first-child "STAR") (is-factor-type variables (second (third lvalue)) INT*)) INT
+    (if (equal? first-child "LPAREN") (get-lvalue-type variables (second (third lvalue)))
+    (show-error "Context Analysis" "Unable to get type of lvalue")))))
+
+(define (is-lvalue-type variables lvalue expect-type)
+    (if (equal? (get-lvalue-type variables lvalue) expect-type) true (show-error "Context Analysis" (string-append "lvalue type does not evaluate to " (convert-type expect-type)))))
+
+(define (is-procedure variables procedure-id expect-arglist)
+    (define signature (first (hash-ref master (token-lexeme procedure-id))))
+    (if (empty? expect-arglist)
+        (if (empty? signature) true (show-error "Context Analysis" "Function must not be given any arguments,"))
+    (if (equal? signature (get-arglist-types variables expect-arglist)) true (show-error "Context Analysis" (string-append "Function argument types do not match signature")))))
+
+(define (is-term-type variables term expect-type)
+    (if (equal? (get-term-type variables term) expect-type) true (show-error "Context Analysis" (string-append "Term type does not evaluate to " (convert-type expect-type)))))
+
+(define (is-factor-type variables factor expect-type)
+    (if (equal? (get-factor-type variables factor) expect-type) true (show-error "Context Analysis" (string-append "Factor type does not evaluate to " (convert-type expect-type)))))
+    
+(define (is-expr-type variables expr expect-type is-retval)
+    (if (equal? (get-expr-type variables expr) expect-type) true (show-error "Context Analysis" (if is-retval (string-append "Return value of a function must be " (convert-type expect-type)) (string-append "Expression type does not evaluate to " (convert-type expect-type))))))
+    
+(define (check-statements-type variables ls)
+    (if (empty? (second ls)) (void)
+    (begin
+        (check-statements-type variables (first (third ls)))
+        (check-statement-type variables (second (third ls))))))
+
+(define (check-test-type variables test)
+    (is-expr-type variables (first (third test)) (get-expr-type variables (third (third test))) false))
+
+(define (check-statement-type variables ls)
+    (define first-child (first (second ls)))
+    (if (equal? first-child "lvalue")
+        (is-expr-type variables (third (third ls)) (get-lvalue-type variables (first (third ls))) false)
+    (if (equal? first-child "IF")
+        (and (check-test-type variables (third (third ls))) (check-statements-type variables (sixth (third ls))) (check-statements-type variables (tenth (third ls))))
+    (if (equal? first-child "WHILE")
+        (and (check-test-type variables (third (third ls))) (check-statements-type variables (sixth (third ls))))
+    (if (equal? first-child "PRINTLN")
+        (is-expr-type variables (third (third ls)) INT false)
+    (if (equal? first-child "DELETE")
+        (is-expr-type variables (fourth (third ls)) INT* false)
+    (show-error "Context Analysis" "Invalid statement structure")))))))
