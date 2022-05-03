@@ -204,3 +204,223 @@
   (if (equal? lexeme "new") 'NEW
   (if (equal? lexeme "delete") 'DELETE
   (if (equal? lexeme "NULL") 'NULL 'ID)))))))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; STEP 2: PARSER
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define reduced-productions (list))
+(define parse-tree (list))
+(define seen-input 0)
+(define productions (make-hash))
+(define reduce (make-hash))
+(define shift (make-hash))
+(define state-stack (list 0))
+(define symbol-stack (list))
+(define alphabet-hash (make-hash))
+(define parsed (list))
+
+(define (make-productions ls index)
+    (if (empty? ls) (void)
+    (begin
+        (hash-set! productions index (list (first (first ls)) (second (first ls))))
+        (make-productions (rest ls) (add1 index)))))
+
+(define (add-reduce i)
+    (define temp-hash (if (hash-has-key? reduce (first i)) (hash-ref reduce (first i)) (make-hash)))
+    (hash-set! temp-hash (second i) (fourth i))
+    (hash-set! reduce (first i) temp-hash))
+
+(define (add-shift i)
+    (define temp-hash (if (hash-has-key? shift (first i)) (hash-ref shift (first i)) (make-hash)))
+    (hash-set! temp-hash (second i) (fourth i))
+    (hash-set! shift (first i) temp-hash))
+
+(define alphabet (list "AMP" "BECOMES" "BOF" "COMMA" "DELETE" "ELSE" "EOF" "EQ" "GE" "GT" "ID" "IF" "INT" "LBRACE" "LBRACK" "LE" "LPAREN" "LT" "MINUS" "NE" "NEW" "NULL" "NUM" "PCT" "PLUS" "PRINTLN" "RBRACE" "RBRACK" "RETURN" "RPAREN" "SEMI" "SLASH" "STAR" "MAIN" "WHILE"))
+(define non-terminals (list "start" "dcl" "dcls" "expr" "factor" "lvalue" "procedure" "procedures" "main" "params" "paramlist" "statement" "statements" "term" "test" "type" "arglist"))
+(define start-state "start")
+(define production-list (list (list "start" (list "BOF" "procedures" "EOF"))
+                            (list "procedures" (list "procedure" "procedures"))
+                            (list "procedures" (list "main")) 
+                            (list "procedure" (list "INT" "ID" "LPAREN" "params" "RPAREN" "LBRACE" "dcls" "statements" "RETURN" "expr" "SEMI" "RBRACE")) 
+                            (list "main" (list "INT" "MAIN" "LPAREN" "dcl" "COMMA" "dcl" "RPAREN" "LBRACE" "dcls" "statements" "RETURN" "expr" "SEMI" "RBRACE")) 
+                            (list "params" (list)) 
+                            (list "params" (list "paramlist")) 
+                            (list "paramlist" (list "dcl")) 
+                            (list "paramlist" (list "dcl" "COMMA" "paramlist")) 
+                            (list "type" (list "INT")) 
+                            (list "type" (list "INT" "STAR")) 
+                            (list "dcls" (list)) 
+                            (list "dcls" (list "dcls" "dcl" "BECOMES" "NUM" "SEMI")) 
+                            (list "dcls" (list "dcls" "dcl" "BECOMES" "NULL" "SEMI")) 
+                            (list "dcl" (list "type" "ID")) 
+                            (list "statements" (list)) 
+                            (list "statements" (list "statements" "statement")) 
+                            (list "statement" (list "lvalue" "BECOMES" "expr" "SEMI")) 
+                            (list "statement" (list "IF" "LPAREN" "test" "RPAREN" "LBRACE" "statements" "RBRACE" "ELSE" "LBRACE" "statements" "RBRACE")) 
+                            (list "statement" (list "WHILE" "LPAREN" "test" "RPAREN" "LBRACE" "statements" "RBRACE")) 
+                            (list "statement" (list "PRINTLN" "LPAREN" "expr" "RPAREN" "SEMI")) 
+                            (list "statement" (list "DELETE" "LBRACK" "RBRACK" "expr" "SEMI")) 
+                            (list "test" (list "expr" "EQ" "expr")) 
+                            (list "test" (list "expr" "NE" "expr")) 
+                            (list "test" (list "expr" "LT" "expr")) 
+                            (list "test" (list "expr" "LE" "expr")) 
+                            (list "test" (list "expr" "GE" "expr")) 
+                            (list "test" (list "expr" "GT" "expr")) 
+                            (list "expr" (list "term")) 
+                            (list "expr" (list "expr" "PLUS" "term")) 
+                            (list "expr" (list "expr" "MINUS" "term")) 
+                            (list "term" (list "factor")) 
+                            (list "term" (list "term" "STAR" "factor")) 
+                            (list "term" (list "term" "SLASH" "factor")) 
+                            (list "term" (list "term" "PCT" "factor")) 
+                            (list "factor" (list "ID")) 
+                            (list "factor" (list "NUM")) 
+                            (list "factor" (list "NULL")) 
+                            (list "factor" (list "LPAREN" "expr" "RPAREN")) 
+                            (list "factor" (list "AMP" "lvalue")) 
+                            (list "factor" (list "STAR" "factor")) 
+                            (list "factor" (list "NEW" "INT" "LBRACK" "expr" "RBRACK")) 
+                            (list "factor" (list "ID" "LPAREN" "RPAREN")) 
+                            (list "factor" (list "ID" "LPAREN" "arglist" "RPAREN")) 
+                            (list "arglist" (list "expr")) 
+                            (list "arglist" (list "expr" "COMMA" "arglist")) 
+                            (list "lvalue" (list "ID")) 
+                            (list "lvalue" (list "STAR" "factor")) 
+                            (list "lvalue" (list "LPAREN" "lvalue" "RPAREN"))))
+(define dfa-state-count 132)
+(define dfa (list (list 72 "RPAREN" "reduce" 45) (list 112 "paramlist" "shift" 1) (list 85 "LPAREN" "shift" 2) (list 40 "factor" "shift" 3) (list 3 "EQ" "reduce" 47) (list 74 "EQ" "reduce" 46) (list 21 "INT" "shift" 4) (list 100 "EQ" "reduce" 48) (list 106 "STAR" "shift" 5) (list 86 "STAR" "shift" 5) (list 88 "STAR" "shift" 5) (list 95 "SEMI" "shift" 6) (list 51 "SEMI" "shift" 7) (list 118 "NULL" "shift" 8) (list 128 "STAR" "reduce" 11) (list 2 "NULL" "shift" 8) (list 108 "GT" "shift" 9) (list 57 "RETURN" "reduce" 16) (list 6 "INT" "reduce" 13) (list 7 "INT" "reduce" 12) (list 19 "factor" "shift" 10) (list 71 "factor" "shift" 10) (list 14 "term" "shift" 11) (list 44 "term" "shift" 11) (list 17 "term" "shift" 11) (list 25 "term" "shift" 11) (list 13 "term" "shift" 11) (list 9 "term" "shift" 11) (list 117 "BECOMES" "reduce" 14) (list 94 "LPAREN" "reduce" 11) (list 100 "GT" "reduce" 48) (list 3 "GT" "reduce" 47) (list 74 "GT" "reduce" 46) (list 85 "expr" "shift" 12) (list 108 "GE" "shift" 13) (list 74 "GE" "reduce" 46) (list 3 "GE" "reduce" 47) (list 100 "GE" "reduce" 48) (list 128 "PRINTLN" "reduce" 11) (list 108 "EQ" "shift" 14) (list 2 "STAR" "shift" 5) (list 118 "STAR" "shift" 5) (list 106 "NEW" "shift" 15) (list 86 "NEW" "shift" 15) (list 88 "NEW" "shift" 15) (list 123 "RPAREN" "shift" 16) (list 108 "LT" "shift" 17) (list 23 "procedure" "shift" 18) (list 70 "term" "shift" 11) (list 31 "PLUS" "shift" 19) (list 32 "PLUS" "shift" 19) (list 33 "PLUS" "shift" 19) (list 34 "PLUS" "shift" 19) (list 35 "PLUS" "shift" 19) (list 36 "PLUS" "shift" 19) (list 94 "WHILE" "reduce" 11) (list 29 "COMMA" "shift" 20) (list 94 "dcls" "shift" 21) (list 70 "ID" "shift" 22) (list 0 "BOF" "shift" 23) (list 5 "NULL" "shift" 8) (list 56 "LPAREN" "shift" 24) (list 108 "LE" "shift" 25) (list 101 "COMMA" "shift" 26) (list 121 "SEMI" "shift" 27) (list 83 "DELETE" "reduce" 18) (list 59 "RETURN" "reduce" 15) (list 57 "WHILE" "reduce" 16) (list 18 "main" "shift" 28) (list 82 "DELETE" "reduce" 19) (list 127 "STAR" "reduce" 39) (list 102 "STAR" "reduce" 40) (list 74 "LE" "reduce" 46) (list 30 "STAR" "reduce" 36) (list 8 "STAR" "reduce" 37) (list 112 "dcl" "shift" 29) (list 90 "STAR" "reduce" 43) (list 93 "STAR" "reduce" 42) (list 97 "STAR" "reduce" 38) (list 116 "STAR" "reduce" 41) (list 73 "NUM" "shift" 30) (list 14 "expr" "shift" 31) (list 44 "expr" "shift" 32) (list 17 "expr" "shift" 33) (list 25 "expr" "shift" 34) (list 13 "expr" "shift" 35) (list 9 "expr" "shift" 36) (list 37 "EOF" "reduce" 4) (list 87 "RBRACE" "shift" 37) (list 26 "INT" "shift" 4) (list 24 "INT" "shift" 4) (list 5 "STAR" "shift" 5) (list 59 "STAR" "reduce" 15) (list 130 "DELETE" "reduce" 17) (list 68 "DELETE" "reduce" 20) (list 131 "DELETE" "reduce" 21) (list 59 "WHILE" "reduce" 15) (list 11 "LT" "reduce" 28) (list 61 "LT" "reduce" 30) (list 60 "LT" "reduce" 29) (list 129 "LPAREN" "shift" 38) (list 121 "PLUS" "shift" 19) (list 46 "NEW" "shift" 15) (list 52 "NEW" "shift" 15) (list 66 "NEW" "shift" 15) (list 4 "ID" "reduce" 9) (list 38 "LPAREN" "shift" 38) (list 85 "STAR" "shift" 5) (list 18 "procedures" "shift" 39) (list 85 "NUM" "shift" 30) (list 40 "NULL" "shift" 8) (list 61 "RPAREN" "reduce" 30) (list 60 "RPAREN" "reduce" 29) (list 11 "RPAREN" "reduce" 28) (list 59 "ID" "reduce" 15) (list 59 "IF" "reduce" 15) (list 57 "RBRACE" "reduce" 16) (list 61 "NE" "reduce" 30) (list 60 "NE" "reduce" 29) (list 11 "NE" "reduce" 28) (list 77 "IF" "reduce" 15) (list 76 "IF" "reduce" 15) (list 115 "STAR" "shift" 40) (list 78 "ID" "reduce" 15) (list 78 "IF" "reduce" 15) (list 74 "RBRACK" "reduce" 46) (list 3 "RBRACK" "reduce" 47) (list 100 "RBRACK" "reduce" 48) (list 128 "LPAREN" "reduce" 11) (list 77 "ID" "reduce" 15) (list 76 "ID" "reduce" 15) (list 15 "INT" "shift" 41) (list 113 "STAR" "shift" 40) (list 114 "STAR" "shift" 40) (list 20 "type" "shift" 42) (list 22 "RPAREN" "reduce" 35) (list 24 "type" "shift" 42) (list 26 "type" "shift" 42) (list 129 "WHILE" "shift" 43) (list 108 "NE" "shift" 44) (list 11 "LE" "reduce" 28) (list 70 "factor" "shift" 10) (list 105 "NEW" "shift" 15) (list 104 "NEW" "shift" 15) (list 80 "term" "shift" 11) (list 80 "expr" "shift" 12) (list 113 "LPAREN" "shift" 38) (list 114 "LPAREN" "shift" 38) (list 117 "RPAREN" "reduce" 14) (list 115 "LPAREN" "shift" 38) (list 61 "LE" "reduce" 30) (list 60 "LE" "reduce" 29) (list 63 "BECOMES" "shift" 45) (list 90 "PCT" "reduce" 43) (list 116 "PCT" "reduce" 41) (list 30 "PCT" "reduce" 36) (list 8 "PCT" "reduce" 37) (list 127 "PCT" "reduce" 39) (list 102 "PCT" "reduce" 40) (list 93 "PCT" "reduce" 42) (list 97 "PCT" "reduce" 38) (list 47 "MINUS" "reduce" 32) (list 48 "MINUS" "reduce" 33) (list 49 "MINUS" "reduce" 34) (list 10 "MINUS" "reduce" 31) (list 10 "STAR" "reduce" 31) (list 11 "STAR" "shift" 46) (list 61 "STAR" "shift" 46) (list 60 "STAR" "shift" 46) (list 70 "LPAREN" "shift" 2) (list 46 "factor" "shift" 47) (list 52 "factor" "shift" 48) (list 66 "factor" "shift" 49) (list 14 "STAR" "shift" 5) (list 44 "STAR" "shift" 5) (list 17 "STAR" "shift" 5) (list 25 "STAR" "shift" 5) (list 13 "STAR" "shift" 5) (list 9 "STAR" "shift" 5) (list 80 "arglist" "shift" 50) (list 12 "RPAREN" "reduce" 44) (list 19 "NEW" "shift" 15) (list 71 "NEW" "shift" 15) (list 45 "NUM" "shift" 51) (list 61 "GE" "reduce" 30) (list 60 "GE" "reduce" 29) (list 11 "GE" "reduce" 28) (list 10 "RBRACK" "reduce" 31) (list 47 "RBRACK" "reduce" 32) (list 48 "RBRACK" "reduce" 33) (list 49 "RBRACK" "reduce" 34) (list 90 "COMMA" "reduce" 43) (list 116 "COMMA" "reduce" 41) (list 61 "GT" "reduce" 30) (list 60 "GT" "reduce" 29) (list 11 "SLASH" "shift" 52) (list 11 "GT" "reduce" 28) (list 61 "SLASH" "shift" 52) (list 60 "SLASH" "shift" 52) (list 30 "COMMA" "reduce" 36) (list 8 "COMMA" "reduce" 37) (list 127 "COMMA" "reduce" 39) (list 102 "COMMA" "reduce" 40) (list 47 "STAR" "reduce" 32) (list 48 "STAR" "reduce" 33) (list 49 "STAR" "reduce" 34) (list 80 "ID" "shift" 22) (list 93 "COMMA" "reduce" 42) (list 97 "COMMA" "reduce" 38) (list 70 "NULL" "shift" 8) (list 59 "RBRACE" "reduce" 15) (list 46 "AMP" "shift" 53) (list 52 "AMP" "shift" 53) (list 66 "AMP" "shift" 53) (list 23 "main" "shift" 28) (list 94 "ID" "reduce" 11) (list 78 "RBRACE" "reduce" 15) (list 94 "IF" "reduce" 11) (list 94 "PRINTLN" "reduce" 11) (list 23 "INT" "shift" 54) (list 5 "ID" "shift" 22) (list 46 "STAR" "shift" 5) (list 52 "STAR" "shift" 5) (list 66 "STAR" "shift" 5) (list 113 "DELETE" "shift" 55) (list 114 "DELETE" "shift" 55) (list 116 "SLASH" "reduce" 41) (list 129 "STAR" "shift" 40) (list 90 "SLASH" "reduce" 43) (list 112 "RPAREN" "reduce" 5) (list 54 "MAIN" "shift" 56) (list 127 "SLASH" "reduce" 39) (list 102 "SLASH" "reduce" 40) (list 93 "SLASH" "reduce" 42) (list 97 "SLASH" "reduce" 38) (list 30 "SLASH" "reduce" 36) (list 8 "SLASH" "reduce" 37) (list 19 "STAR" "shift" 5) (list 71 "STAR" "shift" 5) (list 118 "NUM" "shift" 30) (list 109 "statement" "shift" 57) (list 2 "NUM" "shift" 30) (list 73 "LPAREN" "shift" 2) (list 53 "LPAREN" "shift" 38) (list 47 "COMMA" "reduce" 32) (list 48 "COMMA" "reduce" 33) (list 49 "COMMA" "reduce" 34) (list 14 "factor" "shift" 10) (list 44 "factor" "shift" 10) (list 17 "factor" "shift" 10) (list 25 "factor" "shift" 10) (list 13 "factor" "shift" 10) (list 9 "factor" "shift" 10) (list 10 "COMMA" "reduce" 31) (list 100 "STAR" "reduce" 48) (list 3 "STAR" "reduce" 47) (list 74 "STAR" "reduce" 46) (list 115 "DELETE" "shift" 55) (list 109 "PRINTLN" "shift" 58) (list 78 "WHILE" "reduce" 15) (list 77 "RBRACE" "reduce" 15) (list 76 "RBRACE" "reduce" 15) (list 113 "statement" "shift" 57) (list 114 "statement" "shift" 57) (list 22 "PLUS" "reduce" 35) (list 115 "statement" "shift" 57) (list 105 "AMP" "shift" 53) (list 104 "AMP" "shift" 53) (list 77 "WHILE" "reduce" 15) (list 76 "WHILE" "reduce" 15) (list 128 "dcls" "shift" 59) (list 118 "term" "shift" 11) (list 2 "term" "shift" 11) (list 19 "term" "shift" 60) (list 71 "term" "shift" 61) (list 128 "WHILE" "reduce" 11) (list 19 "LPAREN" "shift" 2) (list 71 "LPAREN" "shift" 2) (list 128 "RETURN" "reduce" 11) (list 57 "ID" "reduce" 16) (list 57 "IF" "reduce" 16) (list 23 "procedures" "shift" 62) (list 2 "LPAREN" "shift" 2) (list 118 "LPAREN" "shift" 2) (list 21 "dcl" "shift" 63) (list 19 "NULL" "shift" 8) (list 71 "NULL" "shift" 8) (list 78 "PRINTLN" "reduce" 15) (list 77 "PRINTLN" "reduce" 15) (list 76 "PRINTLN" "reduce" 15) (list 2 "expr" "shift" 64) (list 118 "expr" "shift" 65) (list 11 "PCT" "shift" 66) (list 21 "ID" "reduce" 15) (list 21 "IF" "reduce" 15) (list 6 "LPAREN" "reduce" 13) (list 7 "LPAREN" "reduce" 12) (list 113 "lvalue" "shift" 67) (list 114 "lvalue" "shift" 67) (list 14 "NULL" "shift" 8) (list 44 "NULL" "shift" 8) (list 17 "NULL" "shift" 8) (list 25 "NULL" "shift" 8) (list 13 "NULL" "shift" 8) (list 9 "NULL" "shift" 8) (list 118 "AMP" "shift" 53) (list 115 "lvalue" "shift" 67) (list 2 "AMP" "shift" 53) (list 16 "SEMI" "shift" 68) (list 80 "factor" "shift" 10) (list 94 "INT" "reduce" 11) (list 5 "NEW" "shift" 15) (list 73 "STAR" "shift" 5) (list 57 "PRINTLN" "reduce" 16) (list 80 "NEW" "shift" 15) (list 74 "LT" "reduce" 46) (list 3 "LT" "reduce" 47) (list 46 "NUM" "shift" 30) (list 52 "NUM" "shift" 30) (list 66 "NUM" "shift" 30) (list 10 "PCT" "reduce" 31) (list 3 "LE" "reduce" 47) (list 100 "LE" "reduce" 48) (list 85 "NEW" "shift" 15) (list 21 "WHILE" "reduce" 15) (list 47 "PCT" "reduce" 32) (list 48 "PCT" "reduce" 33) (list 49 "PCT" "reduce" 34) (list 100 "LT" "reduce" 48) (list 21 "RBRACE" "reduce" 15) (list 22 "COMMA" "reduce" 35) (list 129 "PRINTLN" "shift" 58) (list 22 "SEMI" "reduce" 35) (list 100 "NE" "reduce" 48) (list 3 "NE" "reduce" 47) (list 74 "NE" "reduce" 46) (list 40 "AMP" "shift" 53) (list 14 "ID" "shift" 22) (list 44 "ID" "shift" 22) (list 17 "ID" "shift" 22) (list 25 "ID" "shift" 22) (list 13 "ID" "shift" 22) (list 9 "ID" "shift" 22) (list 94 "RETURN" "reduce" 11) (list 46 "NULL" "shift" 8) (list 52 "NULL" "shift" 8) (list 66 "NULL" "shift" 8) (list 19 "AMP" "shift" 53) 
+    (list 71 "AMP" "shift" 53) (list 118 "ID" "shift" 22) (list 2 "ID" "shift" 22) (list 54 "ID" "shift" 69) (list 80 "NULL" "shift" 8) (list 129 "RETURN" "shift" 70) (list 61 "PLUS" "reduce" 30) (list 60 "PLUS" "reduce" 29) (list 11 "PLUS" "reduce" 28) (list 59 "DELETE" "reduce" 15) (list 22 "PCT" "reduce" 35) (list 31 "MINUS" "shift" 71) (list 32 "MINUS" "shift" 71) (list 33 "MINUS" "shift" 71) (list 34 "MINUS" "shift" 71) (list 35 "MINUS" "shift" 71) (list 36 "MINUS" "shift" 71) (list 105 "NUM" "shift" 30) (list 104 "NUM" "shift" 30) (list 85 "arglist" "shift" 72) (list 22 "RBRACK" "reduce" 35) (list 6 "DELETE" "reduce" 13) (list 7 "DELETE" "reduce" 12) (list 109 "RETURN" "shift" 73) (list 88 "LPAREN" "shift" 2) (list 12 "PLUS" "shift" 19) (list 53 "ID" "shift" 74) (list 105 "LPAREN" "shift" 2) (list 104 "LPAREN" "shift" 2) (list 106 "LPAREN" "shift" 2) (list 86 "LPAREN" "shift" 2) (list 22 "MINUS" "reduce" 35) (list 90 "BECOMES" "reduce" 43) (list 93 "BECOMES" "reduce" 42) (list 97 "BECOMES" "reduce" 38) (list 127 "BECOMES" "reduce" 39) (list 102 "BECOMES" "reduce" 40) (list 30 "BECOMES" "reduce" 36) (list 8 "BECOMES" "reduce" 37) (list 70 "NUM" "shift" 30) (list 116 "BECOMES" "reduce" 41) (list 19 "NUM" "shift" 30) (list 71 "NUM" "shift" 30) (list 73 "expr" "shift" 75) (list 94 "STAR" "reduce" 11) (list 126 "LBRACE" "shift" 76) (list 125 "LBRACE" "shift" 77) (list 100 "SLASH" "reduce" 48) (list 3 "SLASH" "reduce" 47) (list 96 "LBRACE" "shift" 78) (list 74 "SLASH" "reduce" 46) (list 55 "LBRACK" "shift" 79) (list 40 "STAR" "shift" 5) (list 128 "INT" "reduce" 11) (list 2 "NEW" "shift" 15) (list 22 "LPAREN" "shift" 80) (list 127 "NE" "reduce" 39) (list 102 "NE" "reduce" 40) (list 93 "NE" "reduce" 42) (list 97 "NE" "reduce" 38) (list 90 "NE" "reduce" 43) (list 116 "NE" "reduce" 41) (list 116 "MINUS" "reduce" 41) (list 38 "STAR" "shift" 40) (list 78 "RETURN" "reduce" 15) (list 112 "INT" "shift" 4) (list 30 "NE" "reduce" 36) (list 8 "NE" "reduce" 37) (list 30 "MINUS" "reduce" 36) (list 8 "MINUS" "reduce" 37) (list 118 "NEW" "shift" 15) (list 127 "MINUS" "reduce" 39) (list 102 "MINUS" "reduce" 40) (list 93 "MINUS" "reduce" 42) (list 97 "MINUS" "reduce" 38) (list 90 "MINUS" "reduce" 43) (list 77 "RETURN" "reduce" 15) (list 76 "RETURN" "reduce" 15) (list 39 "EOF" "reduce" 1) (list 6 "WHILE" "reduce" 13) (list 7 "WHILE" "reduce" 12) (list 28 "EOF" "reduce" 2) (list 59 "PRINTLN" "reduce" 15) (list 113 "RBRACE" "shift" 81) (list 114 "RBRACE" "shift" 82) (list 127 "RBRACK" "reduce" 39) (list 102 "RBRACK" "reduce" 40) (list 93 "RBRACK" "reduce" 42) (list 97 "RBRACK" "reduce" 38) (list 109 "lvalue" "shift" 67) (list 90 "RBRACK" "reduce" 43) (list 116 "RBRACK" "reduce" 41) (list 115 "RBRACE" "shift" 83) (list 30 "RBRACK" "reduce" 36) (list 8 "RBRACK" "reduce" 37) (list 21 "PRINTLN" "reduce" 15) (list 14 "LPAREN" "shift" 2) (list 44 "LPAREN" "shift" 2) (list 17 "LPAREN" "shift" 2) (list 25 "LPAREN" "shift" 2) (list 13 "LPAREN" "shift" 2) (list 9 "LPAREN" "shift" 2) (list 112 "params" "shift" 84) (list 12 "COMMA" "shift" 85) (list 75 "MINUS" "shift" 71) (list 22 "SLASH" "reduce" 35) (list 103 "RPAREN" "reduce" 8) (list 5 "NUM" "shift" 30) (list 67 "BECOMES" "shift" 86) (list 11 "RBRACK" "reduce" 28) (list 61 "COMMA" "reduce" 30) (list 60 "COMMA" "reduce" 29) (list 61 "RBRACK" "reduce" 30) (list 60 "RBRACK" "reduce" 29) (list 11 "COMMA" "reduce" 28) (list 74 "PCT" "reduce" 46) (list 3 "PCT" "reduce" 47) (list 100 "PCT" "reduce" 48) (list 75 "PLUS" "shift" 19) (list 5 "LPAREN" "shift" 2) (list 112 "type" "shift" 42) (list 85 "ID" "shift" 22) (list 3 "BECOMES" "reduce" 47) (list 74 "BECOMES" "reduce" 46) (list 100 "BECOMES" "reduce" 48) (list 85 "term" "shift" 11) (list 116 "SEMI" "reduce" 41) (list 64 "MINUS" "shift" 71) (list 93 "SEMI" "reduce" 42) (list 97 "SEMI" "reduce" 38) (list 65 "MINUS" "shift" 71) (list 90 "SEMI" "reduce" 43) (list 80 "LPAREN" "shift" 2) (list 75 "SEMI" "shift" 87) (list 130 "RBRACE" "reduce" 17) (list 68 "RBRACE" "reduce" 20) (list 131 "RBRACE" "reduce" 21) (list 14 "AMP" "shift" 53) (list 44 "AMP" "shift" 53) (list 17 "AMP" "shift" 53) (list 25 "AMP" "shift" 53) (list 13 "AMP" "shift" 53) (list 9 "AMP" "shift" 53) (list 82 "RBRACE" "reduce" 19) (list 79 "RBRACK" "shift" 88) (list 127 "SEMI" "reduce" 39) (list 102 "SEMI" "reduce" 40) (list 30 "SEMI" "reduce" 36) (list 8 "SEMI" "reduce" 37) (list 83 "RBRACE" "reduce" 18) (list 68 "PRINTLN" "reduce" 20) (list 131 "PRINTLN" "reduce" 21) (list 130 "PRINTLN" "reduce" 17) (list 47 "PLUS" "reduce" 32) (list 48 "PLUS" "reduce" 33) (list 49 "PLUS" "reduce" 34) (list 82 "PRINTLN" "reduce" 19) (list 10 "PLUS" "reduce" 31) (list 109 "WHILE" "shift" 43) (list 83 "PRINTLN" "reduce" 18) (list 65 "PLUS" "shift" 19) (list 64 "PLUS" "shift" 19) (list 77 "STAR" "reduce" 15) (list 76 "STAR" "reduce" 15) (list 10 "SEMI" "reduce" 31) (list 78 "STAR" "reduce" 15) (list 73 "NULL" "shift" 8) (list 46 "LPAREN" "shift" 2) (list 52 "LPAREN" "shift" 2) (list 66 "LPAREN" "shift" 2) (list 4 "STAR" "shift" 89) (list 47 "SEMI" "reduce" 32) (list 48 "SEMI" "reduce" 33) (list 49 "SEMI" "reduce" 34) (list 116 "RPAREN" "reduce" 41) (list 40 "NUM" "shift" 30) (list 30 "RPAREN" "reduce" 36) (list 8 "RPAREN" "reduce" 37) (list 127 "RPAREN" "reduce" 39) (list 102 "RPAREN" "reduce" 40) (list 50 "RPAREN" "shift" 90) (list 93 "RPAREN" "reduce" 42) (list 97 "RPAREN" "reduce" 38) (list 105 "NULL" "shift" 8) (list 104 "NULL" "shift" 8) (list 90 "RPAREN" "reduce" 43) (list 109 "DELETE" "shift" 55) (list 18 "procedure" "shift" 18) (list 100 "PLUS" "reduce" 48) (list 74 "PLUS" "reduce" 46) (list 3 "PLUS" "reduce" 47) (list 85 "factor" "shift" 10) (list 10 "NE" "reduce" 31) (list 47 "NE" "reduce" 32) (list 48 "NE" "reduce" 33) (list 49 "NE" "reduce" 34) (list 94 "DELETE" "reduce" 11) (list 116 "EQ" "reduce" 41) (list 100 "COMMA" "reduce" 48) (list 30 "GT" "reduce" 36) (list 8 "GT" "reduce" 37) (list 3 "COMMA" "reduce" 47) (list 93 "GT" "reduce" 42) (list 97 "GT" "reduce" 38) (list 127 "GT" "reduce" 39) (list 102 "GT" "reduce" 40) (list 1 "RPAREN" "reduce" 6) (list 74 "COMMA" "reduce" 46) (list 27 "RBRACE" "shift" 91) (list 90 "GE" "reduce" 43) (list 93 "GE" "reduce" 42) (list 97 "GE" "reduce" 38) (list 116 "GE" "reduce" 41) (list 83 "WHILE" "reduce" 18) (list 30 "GE" "reduce" 36) (list 8 "GE" "reduce" 37) (list 127 "GE" "reduce" 39) (list 102 "GE" "reduce" 40) (list 21 "LPAREN" "reduce" 15) (list 6 "STAR" "reduce" 13) (list 7 "STAR" "reduce" 12) (list 82 "WHILE" "reduce" 19) (list 68 "WHILE" "reduce" 20) (list 131 "WHILE" "reduce" 21) (list 130 "WHILE" "reduce" 17) (list 61 "PCT" "shift" 66) (list 60 "PCT" "shift" 66) (list 80 "NUM" "shift" 30) (list 20 "dcl" "shift" 29) (list 99 "RPAREN" "shift" 92) (list 128 "ID" "reduce" 11) (list 57 "LPAREN" "reduce" 16) (list 80 "RPAREN" "shift" 93) (list 92 "LBRACE" "shift" 94) (list 14 "NUM" "shift" 30) (list 44 "NUM" "shift" 30) (list 17 "NUM" "shift" 30) (list 25 "NUM" "shift" 30) (list 13 "NUM" "shift" 30) (list 9 "NUM" "shift" 30) (list 90 "GT" "reduce" 43) (list 116 "GT" "reduce" 41) (list 45 "NULL" "shift" 95) (list 128 "IF" "reduce" 11) (list 81 "ELSE" "shift" 96) (list 57 "DELETE" "reduce" 16) (list 64 "RPAREN" "shift" 97) (list 73 "AMP" "shift" 53) (list 62 "EOF" "shift" 98) (list 21 "STAR" "reduce" 15) (list 118 "factor" "shift" 10) (list 105 "factor" "shift" 10) (list 104 "factor" "shift" 10) (list 2 "factor" "shift" 10) (list 29 "RPAREN" "reduce" 7) (list 100 "RPAREN" "reduce" 48) (list 105 "ID" "shift" 22) (list 104 "ID" "shift" 22) (list 82 "LPAREN" "reduce" 19) (list 20 "INT" "shift" 4) (list 88 "factor" "shift" 10) (list 130 "LPAREN" "reduce" 17) (list 106 "factor" "shift" 10) (list 86 "factor" "shift" 10) (list 68 "LPAREN" "reduce" 20) (list 131 "LPAREN" "reduce" 21) (list 26 "dcl" "shift" 99) (list 19 "ID" "shift" 22) (list 71 "ID" "shift" 22) (list 74 "RPAREN" "reduce" 46) (list 111 "RPAREN" "shift" 100) (list 3 "RPAREN" "reduce" 47) (list 83 "LPAREN" "reduce" 18) (list 24 "dcl" "shift" 101) (list 5 "factor" "shift" 102) (list 20 "paramlist" "shift" 103) (list 107 "LPAREN" "shift" 104) (list 43 "LPAREN" "shift" 105) (list 58 "LPAREN" "shift" 106) (list 12 "MINUS" "shift" 71) (list 11 "MINUS" "reduce" 28) (list 61 "MINUS" "reduce" 30) (list 60 "MINUS" "reduce" 29) (list 59 "INT" "shift" 4) (list 93 "LT" "reduce" 42) (list 97 "LT" "reduce" 38) (list 90 "LT" "reduce" 43) (list 30 "LT" "reduce" 36) (list 8 "LT" "reduce" 37) (list 127 "LT" "reduce" 39) (list 102 "LT" "reduce" 40) (list 91 "INT" "reduce" 3) (list 116 "LT" "reduce" 41) (list 93 "LE" "reduce" 42) (list 97 "LE" "reduce" 38) (list 108 "PLUS" "shift" 19) (list 127 "LE" "reduce" 39) (list 102 "LE" "reduce" 40) (list 30 "LE" "reduce" 36) (list 8 "LE" "reduce" 37) (list 129 "ID" "shift" 74) (list 116 "LE" "reduce" 41) (list 129 "IF" "shift" 107) (list 90 "LE" "reduce" 43) (list 46 "ID" "shift" 22) (list 52 "ID" "shift" 22) (list 66 "ID" "shift" 22) (list 70 "NEW" "shift" 15) (list 88 "NULL" "shift" 8) (list 106 "NULL" "shift" 8) (list 86 "NULL" "shift" 8) (list 10 "EQ" "reduce" 31) (list 47 "EQ" "reduce" 32) (list 48 "EQ" "reduce" 33) (list 49 "EQ" "reduce" 34) (list 80 "STAR" "shift" 5) (list 6 "PRINTLN" "reduce" 13) (list 7 "PRINTLN" "reduce" 12) (list 22 "LT" "reduce" 35) (list 59 "LPAREN" "reduce" 15) (list 59 "type" "shift" 42) (list 73 "NEW" "shift" 15) (list 22 "LE" "reduce" 35) (list 109 "STAR" "shift" 40) (list 105 "expr" "shift" 108) (list 104 "expr" "shift" 108) (list 93 "PLUS" "reduce" 42) (list 97 "PLUS" "reduce" 38) (list 90 "PLUS" "reduce" 43) (list 116 "PLUS" "reduce" 41) (list 30 "PLUS" "reduce" 36) (list 8 "PLUS" "reduce" 37) (list 127 "PLUS" "reduce" 39) (list 102 "PLUS" "reduce" 40) (list 10 "GT" "reduce" 31) (list 47 "GT" "reduce" 32) (list 48 "GT" "reduce" 33) (list 49 "GT" "reduce" 34) (list 109 "IF" "shift" 107) (list 109 "ID" "shift" 74) (list 80 "AMP" "shift" 53) (list 108 "MINUS" "shift" 71) (list 10 "GE" "reduce" 31) (list 47 "GE" "reduce" 32)
+    (list 48 "GE" "reduce" 33) (list 49 "GE" "reduce" 34) (list 21 "statements" "shift" 109) (list 109 "LPAREN" "shift" 38) (list 59 "dcl" "shift" 63) (list 128 "DELETE" "reduce" 11) (list 40 "ID" "shift" 22) (list 84 "RPAREN" "shift" 110) (list 88 "NUM" "shift" 30) (list 106 "NUM" "shift" 30) (list 86 "NUM" "shift" 30) (list 40 "LPAREN" "shift" 2) (list 38 "lvalue" "shift" 111) (list 22 "BECOMES" "reduce" 35) (list 40 "NEW" "shift" 15) (list 69 "LPAREN" "shift" 112) (list 77 "statements" "shift" 113) (list 76 "statements" "shift" 114) (list 73 "term" "shift" 11) (list 78 "statements" "shift" 115) (list 53 "STAR" "shift" 40) (list 57 "STAR" "reduce" 16) (list 93 "EQ" "reduce" 42) (list 97 "EQ" "reduce" 38) (list 90 "EQ" "reduce" 43) (list 30 "EQ" "reduce" 36) (list 8 "EQ" "reduce" 37) (list 127 "EQ" "reduce" 39) (list 102 "EQ" "reduce" 40) (list 85 "AMP" "shift" 53) (list 47 "LT" "reduce" 32) (list 48 "LT" "reduce" 33) (list 49 "LT" "reduce" 34) (list 10 "LT" "reduce" 31) (list 117 "COMMA" "reduce" 14) (list 18 "INT" "shift" 54) (list 83 "RETURN" "reduce" 18) (list 10 "LE" "reduce" 31) (list 3 "MINUS" "reduce" 47) (list 129 "statement" "shift" 57) (list 74 "MINUS" "reduce" 46) (list 22 "NE" "reduce" 35) (list 10 "RPAREN" "reduce" 31) (list 100 "MINUS" "reduce" 48) (list 47 "LE" "reduce" 32) (list 48 "LE" "reduce" 33) (list 49 "LE" "reduce" 34) (list 106 "term" "shift" 11) (list 86 "term" "shift" 11) (list 130 "RETURN" "reduce" 17) (list 47 "RPAREN" "reduce" 32) (list 48 "RPAREN" "reduce" 33) (list 49 "RPAREN" "reduce" 34) (list 70 "AMP" "shift" 53) (list 88 "term" "shift" 11) (list 68 "RETURN" "reduce" 20) (list 131 "RETURN" "reduce" 21) (list 82 "RETURN" "reduce" 19) (list 105 "term" "shift" 11) (list 104 "term" "shift" 11) (list 82 "STAR" "reduce" 19) (list 22 "STAR" "reduce" 35) (list 83 "STAR" "reduce" 18) (list 77 "LPAREN" "reduce" 15) (list 76 "LPAREN" "reduce" 15) (list 65 "RBRACK" "shift" 116) (list 70 "STAR" "shift" 5) (list 68 "STAR" "reduce" 20) (list 131 "STAR" "reduce" 21) (list 78 "LPAREN" "reduce" 15) (list 130 "STAR" "reduce" 17) (list 129 "DELETE" "shift" 55) (list 121 "MINUS" "shift" 71) (list 78 "DELETE" "reduce" 15) (list 42 "ID" "shift" 117) (list 77 "DELETE" "reduce" 15) (list 76 "DELETE" "reduce" 15) (list 113 "ID" "shift" 74) (list 114 "ID" "shift" 74) (list 113 "IF" "shift" 107) (list 114 "IF" "shift" 107) (list 115 "ID" "shift" 74) (list 115 "IF" "shift" 107) (list 38 "ID" "shift" 74) (list 123 "PLUS" "shift" 19) (list 124 "PLUS" "shift" 19) (list 122 "PLUS" "shift" 19) (list 47 "SLASH" "reduce" 32) (list 48 "SLASH" "reduce" 33) (list 49 "SLASH" "reduce" 34) (list 10 "SLASH" "reduce" 31) (list 41 "LBRACK" "shift" 118) (list 14 "NEW" "shift" 15) (list 44 "NEW" "shift" 15) (list 17 "NEW" "shift" 15) (list 25 "NEW" "shift" 15) (list 13 "NEW" "shift" 15) (list 9 "NEW" "shift" 15) (list 105 "STAR" "shift" 5) (list 104 "STAR" "shift" 5) (list 105 "test" "shift" 119) (list 104 "test" "shift" 120) (list 5 "AMP" "shift" 53) (list 122 "MINUS" "shift" 71) (list 123 "MINUS" "shift" 71) (list 124 "MINUS" "shift" 71) (list 70 "expr" "shift" 121) (list 100 "SEMI" "reduce" 48) (list 73 "ID" "shift" 22) (list 3 "SEMI" "reduce" 47) (list 74 "SEMI" "reduce" 46) (list 113 "WHILE" "shift" 43) (list 114 "WHILE" "shift" 43) (list 88 "ID" "shift" 22) (list 106 "ID" "shift" 22) (list 86 "ID" "shift" 22) (list 22 "GE" "reduce" 35) (list 115 "WHILE" "shift" 43) (list 88 "expr" "shift" 122) (list 106 "expr" "shift" 123) (list 86 "expr" "shift" 124) (list 120 "RPAREN" "shift" 125) (list 119 "RPAREN" "shift" 126) (list 22 "GT" "reduce" 35) (list 129 "lvalue" "shift" 67) (list 11 "SEMI" "reduce" 28) (list 6 "IF" "reduce" 13) (list 7 "IF" "reduce" 12) (list 61 "SEMI" "reduce" 30) (list 60 "SEMI" "reduce" 29) (list 53 "lvalue" "shift" 127) (list 6 "ID" "reduce" 13) (list 7 "ID" "reduce" 12) (list 88 "AMP" "shift" 53) (list 89 "ID" "reduce" 10) (list 110 "LBRACE" "shift" 128) (list 106 "AMP" "shift" 53) (list 86 "AMP" "shift" 53) (list 83 "IF" "reduce" 18) (list 83 "ID" "reduce" 18) (list 82 "IF" "reduce" 19) (list 130 "IF" "reduce" 17) (list 82 "ID" "reduce" 19) (list 68 "IF" "reduce" 20) (list 131 "IF" "reduce" 21) (list 31 "RPAREN" "reduce" 22) (list 32 "RPAREN" "reduce" 23) (list 33 "RPAREN" "reduce" 24) (list 34 "RPAREN" "reduce" 25) (list 35 "RPAREN" "reduce" 26) (list 36 "RPAREN" "reduce" 27) (list 21 "type" "shift" 42) (list 6 "RETURN" "reduce" 13) (list 7 "RETURN" "reduce" 12) (list 59 "statements" "shift" 129) (list 68 "ID" "reduce" 20) (list 131 "ID" "reduce" 21) (list 130 "ID" "reduce" 17) (list 22 "EQ" "reduce" 35) (list 11 "EQ" "reduce" 28) (list 73 "factor" "shift" 10) (list 61 "EQ" "reduce" 30) (list 60 "EQ" "reduce" 29) (list 85 "NULL" "shift" 8) (list 115 "PRINTLN" "shift" 58) (list 124 "SEMI" "shift" 130) (list 122 "SEMI" "shift" 131) (list 21 "RETURN" "reduce" 15) (list 113 "PRINTLN" "shift" 58) (list 114 "PRINTLN" "shift" 58) (list 21 "DELETE" "reduce" 15)))
+
+(define (parse-token ls)
+    (if (empty? ls) empty
+        (cons (token (symbol->string (token-kind (first ls))) (token-lexeme (first ls))) (parse-token (rest ls)))))
+
+(define (set-hashes)
+    (make-productions production-list 0)
+
+    (for ([i dfa-state-count])
+        (hash-set! reduce i (make-hash))
+        (hash-set! shift i (make-hash)))
+    (for ([i dfa])
+        (if (equal? (third i) "reduce")
+            (add-reduce i) (add-shift i))))
+
+(set-hashes)
+
+(define (pop-stack stack n)
+    (if (zero? n) stack
+    (if (empty? stack) (show-error "Parse" "Symbol Stack Failure in LR(0) Parsing")
+    (pop-stack (rest stack) (sub1 n)))))
+
+(define (one-shift a)
+    (if (hash-has-key? (hash-ref shift (first state-stack)) a)
+        (set! state-stack (append (list (hash-ref (hash-ref shift (first state-stack)) a)) state-stack))
+    (show-error "Parse" "State Stack Failure in LR(0) Parsing")))
+
+(define (check-shift a)
+    (if (or (empty? state-stack)
+            (not (hash-has-key? (hash-ref shift (first state-stack)) a)))
+        (show-error "Parse" "State Stack Failure in LR(0) Parsing")
+        (begin
+            (set! symbol-stack (append (list a) symbol-stack))
+            (one-shift a)
+            (if (or (equal? a "BOF") (equal? a "EOF")) (void)
+            (set! seen-input (add1 seen-input))))))
+
+(define (separate-list-acc ls count acc)
+    (if (zero? count) (list acc ls)
+        (separate-list-acc (rest ls) (sub1 count) (append acc (list (first ls))))))
+
+(define (separate-list ls len)
+    (separate-list-acc ls (- (length ls) len) (list)))
+
+(define (update-parse-tree parse-trees parent) 
+    (define new-node (list parent (second parse-trees)))
+    (set! parse-tree (append (first parse-trees) (list new-node))))
+
+(define (one-reduce a)
+    (define production-index (hash-ref (hash-ref reduce (first state-stack)) a))
+    (define production (hash-ref productions production-index))
+    (define production-left (first production))
+    (define production-right (second production))
+    (define production-length (length production-right))
+
+    (update-parse-tree (separate-list parse-tree production-length) production-left)
+    (set! reduced-productions (append reduced-productions (list (append (list production-left) production-right))))
+
+    (set! state-stack (pop-stack state-stack production-length))
+    (set! symbol-stack (pop-stack symbol-stack production-length))
+
+    (set! symbol-stack (append (list production-left) symbol-stack))
+    
+    (one-shift production-left))
+
+(define (check-reduce a)
+    (if (or (empty? state-stack)
+            (not (hash-has-key? (hash-ref reduce (first state-stack)) a)))
+        (void)
+        (begin
+            (one-reduce a)
+            (check-reduce a))))
+
+(define (print-first node)
+(if (token? (first node)) (set! parsed (append parsed (list (string-append (token-kind (first node)) " " (token-lexeme (first node))))))
+    (print-line (append (list (first node)) (map (lambda (lst) (if (token? (first lst)) (token-kind (first lst)) (first lst))) (second node))) "")))
+
+(define (print-parse parse-tree)
+    (if (empty? parse-tree) (void)
+    (begin
+        (print-first parse-tree)
+        (print-children (second parse-tree)))))
+
+(define (print-children children)
+    (if (empty? children) (void)
+    (begin
+        (print-parse (first children))
+        (print-children (rest children)))))
+
+(define (modify-parse-tree start)
+    (define first-ignore (separate-list parse-tree 1))
+    (define first-part (first (first first-ignore)))
+    (define second-part (first (rest (first first-ignore))))
+    (define third-part (first (second first-ignore)))
+
+    (set! parse-tree (list start (list first-part second-part third-part))))
+
+(define (print-line ls acc)
+    (if (empty? (rest ls)) (set! parsed (append parsed (list (string-append acc (first ls)))))
+    (begin
+        (print-line (rest ls) (string-append acc (first ls) " ")))))
+
+(define (confirm-stacks)
+    (define production-index (last state-stack))
+    (define production (hash-ref productions production-index))
+    (define production-left (first production))
+    (define production-right (second production))
+
+    (if (equal? production-left start-state)
+        (begin
+            (modify-parse-tree production-left)
+            (print-parse parse-tree)
+            parsed)
+        (show-error "Parse" "Parsing Termination is Unsuccessful")))
+
+(define (list->hash ls hash)
+    (if (empty? ls) (void)
+        (begin
+            (hash-set! hash (first ls) 0)
+            (list->hash (rest ls) hash))))
+(list->hash alphabet alphabet-hash)
+
+(define (derive input)
+    (if (empty? input) (confirm-stacks)
+    (if (hash-has-key? alphabet-hash (token-kind (first input)))
+    (begin
+        (check-reduce (token-kind (first input)))
+        (check-shift (token-kind (first input)))
+        (set! parse-tree (append parse-tree (list (list (first input) (list)))))
+        (set! reduced-productions (append reduced-productions  (list (list (token-kind (first input)) (token-lexeme (first input))))))
+        (derive (rest input)))
+    (show-error "Parse" (string-append "Token Failure at " (number->string seen-input))))))
