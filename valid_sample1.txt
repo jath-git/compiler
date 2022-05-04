@@ -1,4 +1,4 @@
-#scan
+#scan 5
 
 int helper(int variable, int x, int y, int z) {
     return variable * x + y + z;

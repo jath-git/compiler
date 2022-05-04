@@ -145,18 +145,23 @@
 
 (define (set-action)
     (if (empty? inputs) (show-error "Scan" "Input file is empty")
-        (set-action)))
+        (set-action-not-empty)))
 
 (define (set-action-not-empty)
     (define potential (string-split (first inputs)))
     (define error-msg "Compilation action (first line) does not follow proper format")
 
-    (if (and (or (equal? (length potential) 1) (equal? (length potential) 3))
+    (if (and (or (equal? (length potential) 1) (equal? (length potential) 2) (equal? (length potential) 3))
             (> (string-length (first potential)) 0)
             (equal? (substring (first potential) 0 1) "#"))
             
             (begin
                 (set! action (first potential))
+                (if (equal? (length potential) 2)
+                    (if (number? (string->number (second potential)))
+                        (set! first-int (string->number (second potential)))
+                    (show-error "Scan" error-msg))
+                    (void))
                 (if (equal? (length potential) 3)
                     (if (and (number? (string->number (second potential)))
                             (number? (string->number (third potential))))
