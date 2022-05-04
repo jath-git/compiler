@@ -1,4 +1,4 @@
-#scan 5 2
+#assembly 5 2
 
 int helper(int variable, int x, int y, int z) {
     return variable * x + y + z;

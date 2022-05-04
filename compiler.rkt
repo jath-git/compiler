@@ -522,7 +522,7 @@
     (define used-name (token-lexeme (first (third ls))))
     (if (hash-has-key? hash used-name) (show-error "Context Analysis" (string-append used-name " is Recognized as Variables"))
     (if (not (hash-has-key? master used-name))
-        (show-error "Context Analysis" (string-append used-name " Function is Not Defined")) (void))))
+        (show-error "Context Analysis" (string-append "\"" used-name "\"" " Function is Not Defined")) (void))))
 
 (define (check-use hash ls)
     (if (not (token? ls))

@@ -1,4 +1,4 @@
-[#scan/#parse/#analyze/#assembly/#binary] [optional: <int> <int>]
+[#scan/#parse/#analyze/#assembly/#binary] [optional: <int>] [optional: <int>]
 
 [optional: <procedure(s) with body format like main>]
 

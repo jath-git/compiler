@@ -1,17 +1,4 @@
-#scan 5 2
-
-int helper(int variable, int x, int y, int z) {
-    return variable * x + y + z;
-}
-
-int wrapper(int variable) {
-    int a = 1;
-    int b = 4;
-    int c = 0;
-    c = b + a;
-
-    return helper(variable, a, b, c);
-}
+#binary 5 2
 
 int main(int a, int b) {
     int c = 34;
