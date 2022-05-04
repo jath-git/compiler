@@ -52,7 +52,34 @@
             (displayln (string-append (symbol->string (token-kind (first ls))) " " (token-lexeme (first ls))))
             (print-tokens (rest ls)))))
 
-(define inputs (read-all-input))
+(define (set-action inputs)
+    (if (empty? inputs) (show-error "Scan" "Input file is empty")
+        (set-action-not-empty inputs)))
+
+(define (set-action-not-empty inputs)
+    (define potential (string-split (first inputs)))
+    (define error-msg "Compilation action (first line) does not follow proper format")
+
+    (if (and (or (equal? (length potential) 1) (equal? (length potential) 2) (equal? (length potential) 3))
+            (> (string-length (first potential)) 0)
+            (equal? (substring (first potential) 0 1) "#"))
+            
+            (begin
+                (set! action (first potential))
+                (if (equal? (length potential) 2)
+                    (if (number? (string->number (second potential)))
+                        (set! first-int (string->number (second potential)))
+                    (show-error "Scan" error-msg))
+                    (void))
+                (if (equal? (length potential) 3)
+                    (if (and (number? (string->number (second potential)))
+                            (number? (string->number (third potential))))
+                    (begin
+                        (set! first-int (string->number (second potential)))
+                        (set! second-int (string->number (third potential))))
+                    (show-error "Scan" error-msg))
+                    (void)))
+            (show-error "Scan" error-msg)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; STEP 1: SCANNER
@@ -142,38 +169,6 @@
         (scan-all (car result) (cons (cdr result) accumulator)))))
 
   (scan-all input null))
-
-(define (set-action)
-    (if (empty? inputs) (show-error "Scan" "Input file is empty")
-        (set-action-not-empty)))
-
-(define (set-action-not-empty)
-    (define potential (string-split (first inputs)))
-    (define error-msg "Compilation action (first line) does not follow proper format")
-
-    (if (and (or (equal? (length potential) 1) (equal? (length potential) 2) (equal? (length potential) 3))
-            (> (string-length (first potential)) 0)
-            (equal? (substring (first potential) 0 1) "#"))
-            
-            (begin
-                (set! action (first potential))
-                (if (equal? (length potential) 2)
-                    (if (number? (string->number (second potential)))
-                        (set! first-int (string->number (second potential)))
-                    (show-error "Scan" error-msg))
-                    (void))
-                (if (equal? (length potential) 3)
-                    (if (and (number? (string->number (second potential)))
-                            (number? (string->number (third potential))))
-                    (begin
-                        (set! first-int (string->number (second potential)))
-                        (set! second-int (string->number (third potential))))
-                    (show-error "Scan" error-msg))
-                    (void)))
-            (show-error "Scan" error-msg)))
-
-(set-action)
-(set! inputs (rest inputs))
 
 (define (clean-tokens tokens)
   (if (or (empty? tokens) (equal? (token-kind (first tokens)) 'COMMENT)) empty
@@ -1162,6 +1157,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (main)
+    (define inputs (read-all-input))
+    (set-action inputs)
+    (set! inputs (rest inputs))
+
     (if (or (equal? action "#scan") (equal? action "#parse") (equal? action "#analyze")
             (equal? action "#assembly") (equal? action "#binary")) (void) (show-error-basic "Compilation action is not recognized"))
 
