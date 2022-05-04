@@ -1151,3 +1151,50 @@
 (define (generate-epilogue)
     (restore-30 (get-variables "ffmain"))
     (add-code "jr $31"))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; STEP 5: COMBINE ALL STEPS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (main)
+    (if (or (equal? action "#scan") (equal? action "#parse") (equal? action "#analyze")
+            (equal? action "#assembly") (equal? action "#binary")) (void) (show-error-basic "Compilation action is not recognized"))
+
+    (define scanner-output (simplify-tokens (get-tokens inputs)))
+
+    (if (equal? action "#scan")
+        (begin
+            (print-tokens scanner-output)
+            (exit))
+        (void))
+
+    (define sequence (append (list (token "BOF" "BOF")) (parse-token scanner-output) (list (token "EOF" "EOF"))))
+    (define parser-output (derive sequence))
+
+    (if (equal? action "#parse")
+        (begin
+            (print-lines parser-output)
+            (exit))
+        (void))
+
+    (set! parse-tree (make-parse-tree))
+    (make-master (second (third parse-tree)))
+
+    (if (equal? action "#analyze")
+        (begin
+            (displayln "The program successfully passes the context sensitive analysis")
+            (exit))
+        (void))
+
+    (generate-code)
+
+    (if (equal? action "#assembly")
+        (begin
+            (print-lines assembly-code)
+            (exit))
+        (void))
+
+    (mips-main assembly-code)
+    (exit))
+    
+(main)
