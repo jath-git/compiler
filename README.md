@@ -12,11 +12,14 @@
 ## Template of Program
 
 [optional: <procedure(s) with body format like main>]
-
+<br/>
 int main(int <id name>, int <id name>) {
+   <br/>
   [optional <int declaration or int* declaration set to NULL>]
-
+   <br/>
   [optional <statements (e.g. arithmetic, if, while)>]
-
+   <br/>
   return <int expression>
+   <br/>
 }
+<br/>
