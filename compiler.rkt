@@ -13,7 +13,7 @@
 (define INT* 1)
 (define VOID -1)
 (define master (make-hash))
-(define action "")
+(define action "assembly")
 (define first-int 0)
 (define second-int 0)
 
@@ -52,37 +52,43 @@
             (displayln (string-append (symbol->string (token-kind (first ls))) " " (token-lexeme (first ls))))
             (print-tokens (rest ls)))))
 
-(define (set-action inputs)
-    (if (empty? inputs) (show-error "Scan" "Input file is empty")
-        (set-action-not-empty inputs)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; STEP 1: COMMAND LINE
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (set-action-not-empty inputs)
-    (define potential (string-split (first inputs)))
-    (define error-msg "Compilation action (first line) does not follow proper format")
+(define (set-action)
+    (define potential (vector->list (current-command-line-arguments)))
 
-    (if (and (or (equal? (length potential) 1) (equal? (length potential) 2) (equal? (length potential) 3))
-            (> (string-length (first potential)) 0)
-            (equal? (substring (first potential) 0 1) "#"))
-            
-            (begin
-                (set! action (first potential))
-                (if (equal? (length potential) 2)
-                    (if (number? (string->number (second potential)))
+    (if (> (length potential) 3)
+        (show-error "Command Line" "Too many command line arguments given")
+        (void))
+
+    (if (not (zero? (length potential)))
+        (begin
+            (if (not (member (first potential) (list "scan" "parse" "analyze" "assembly" "binary")))
+                (show-error "Command Line" "First argument is not a valid action")
+                (set! action (first potential)))
+
+            (if (> (length potential) 1)
+                (begin
+                    (if (not (integer? (string->number (second potential))))
+                        (show-error "Command Line" "Second argument must be an integer")
                         (set! first-int (string->number (second potential)))
-                    (show-error "Scan" error-msg))
-                    (void))
-                (if (equal? (length potential) 3)
-                    (if (and (number? (string->number (second potential)))
-                            (number? (string->number (third potential))))
-                    (begin
-                        (set! first-int (string->number (second potential)))
-                        (set! second-int (string->number (third potential))))
-                    (show-error "Scan" error-msg))
-                    (void)))
-            (show-error "Scan" error-msg)))
+                    )
+
+                    (if (= (length potential) 3)
+                        (begin
+                            (if (not (integer? (string->number (third potential))))
+                                (show-error "Command Line" "Third argument must be an integer")
+                                (set! second-int (string->number (third potential)))
+                            ))
+                        (void))
+                )
+                (void)))
+            (void)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; STEP 1: SCANNER
+;; STEP 2: SCANNER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define-struct DFA (start accepting transition))
@@ -206,7 +212,7 @@
   (if (equal? lexeme "NULL") 'NULL 'ID)))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; STEP 2: PARSER
+;; STEP 3: PARSER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define reduced-productions (list))
@@ -426,7 +432,7 @@
     (show-error "Parse" (string-append "Token Failure at " (number->string seen-input))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; STEP 3: CONTEXT SENSITIVE ANALYZER
+;; STEP 4: CONTEXT SENSITIVE ANALYZER
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define offset 0)
@@ -475,7 +481,7 @@
     (add-paramlist signature variables (third (third paramlist)))))
 
 (define (add-procedure procedure)
-    (define name (string-append "ff" (token-lexeme (second procedure))))
+    (define name (token-lexeme (second procedure)))
     (define variables (make-hash))
     (define params (fourth procedure))
     (define signature (list))
@@ -529,7 +535,7 @@
     (if (equal? type INT) "INT" "INT*"))
 
 (define (add-main main)
-    (define name "ffmain")
+    (define name "main")
     (define variables (make-hash))
     (define parameter1 (third (fourth main)))
     (define parameter2 (third (sixth main)))
@@ -660,7 +666,7 @@
     (show-error "Context Analysis" "Invalid statement structure")))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; STEP 4: CODE GENERATOR
+;; STEP 5: CODE GENERATOR
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define assembly-code (list))
@@ -1033,7 +1039,7 @@
     (void)))))
 
 (define (code-main main)
-    (define variables (get-variables "ffmain"))
+    (define variables (get-variables "main"))
     
     (generate-prologue)
     
@@ -1076,7 +1082,7 @@
 ; )
 
 (define (code-procedure procedure)
-    (define name (string-append "ff" (token-lexeme (second (third procedure)))))
+    (define name (token-lexeme (second (third procedure))))
     (define variables (get-variables name))
     (define params (fourth (third procedure)))
     (define dcls (seventh (third procedure)))
@@ -1084,7 +1090,7 @@
     (define expr (tenth (third procedure)))
 
     (add-code "")
-    (add-code (string-append name ":"))
+    (add-code (string-append "ff" name ":"))
     (code-dcls variables dcls)
     (code-statements variables statements)
     (code-expr variables expr)
@@ -1149,24 +1155,20 @@
     (add-code "sub $30, $30, $4"))
 
 (define (generate-epilogue)
-    (restore-30 (get-variables "ffmain"))
+    (restore-30 (get-variables "main"))
     (add-code "jr $31"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; STEP 5: COMBINE ALL STEPS
+;; STEP 6: COMBINE ALL STEPS
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (main)
+    (set-action)
     (define inputs (read-all-input))
-    (set-action inputs)
-    (set! inputs (rest inputs))
-
-    (if (or (equal? action "#scan") (equal? action "#parse") (equal? action "#analyze")
-            (equal? action "#assembly") (equal? action "#binary")) (void) (show-error-basic "Compilation action is not recognized"))
 
     (define scanner-output (simplify-tokens (get-tokens inputs)))
 
-    (if (equal? action "#scan")
+    (if (equal? action "scan")
         (begin
             (print-tokens scanner-output)
             (exit))
@@ -1175,7 +1177,7 @@
     (define sequence (append (list (token "BOF" "BOF")) (parse-token scanner-output) (list (token "EOF" "EOF"))))
     (define parser-output (derive sequence))
 
-    (if (equal? action "#parse")
+    (if (equal? action "parse")
         (begin
             (print-lines parser-output)
             (exit))
@@ -1184,7 +1186,7 @@
     (set! parse-tree (make-parse-tree))
     (make-master (second (third parse-tree)))
 
-    (if (equal? action "#analyze")
+    (if (equal? action "analyze")
         (begin
             (displayln "The program successfully passes the context sensitive analysis")
             (exit))
@@ -1192,7 +1194,7 @@
 
     (generate-code)
 
-    (if (equal? action "#assembly")
+    (if (equal? action "assembly")
         (begin
             (print-lines assembly-code)
             (exit))
