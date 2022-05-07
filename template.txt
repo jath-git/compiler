@@ -1,5 +1,3 @@
-[#scan/#parse/#analyze/#assembly/#binary] [optional: <int>] [optional: <int>]
-
 [optional: <procedure(s) with body format like main>]
 
 int main(int <id name>, int <id name>) {
