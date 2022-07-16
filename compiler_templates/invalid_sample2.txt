@@ -1,0 +1,21 @@
+int main(int a, int b) {
+    int c = 34;
+    int* pointer = NULL;
+    int d = 11;
+
+    pointer = &c;
+
+    if (pointer != NULL) {
+        d = d + b + *pointer;
+    } else {
+        d = d + b + c;
+    }
+
+    c = 2;
+    while (c < 0) {
+        d = d + 2;
+        c = c - 1;
+    }
+    
+    return d + wrapper(c + 1);
+}
