@@ -1,0 +1,8 @@
+Each line must have the following 5, in order:
+1) Path to input file
+2) Compilation action (e.g. scan, parse, analyze, assembly, binary) or . which defaults to assembly
+3) First int of main function or . which defaults to 0
+4) Second int of main function or . which defaults to 0
+5) Path to output file or . which defaults to terminal stdout
+
+Newline at the end
