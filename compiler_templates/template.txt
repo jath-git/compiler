@@ -1,0 +1,9 @@
+[optional: <procedure(s) with body format like main>]
+
+int main(int <id name>, int <id name>) {
+  [optional <int declaration or int* declaration set to NULL>]
+
+  [optional <statements (e.g. arithmetic, if, while)>]
+
+  return <int expression>
+}
