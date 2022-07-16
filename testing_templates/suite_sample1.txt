@@ -1,0 +1,2 @@
+compiler_templates/valid_sample1.txt . . . .
+compiler_templates/valid_sample1.txt scan 1 1 .
