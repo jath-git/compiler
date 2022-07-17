@@ -34,20 +34,36 @@ fi
 if [ $5 = '.' ]; then
     if [ $2 = '.' ] && [ $3 = '.' ] && [ $4 = '.' ]; then
         racket compiler.rkt < $1
+    elif [ $2 = '.' ] && [ $3 != '.' ] && [ $4 = '.' ]; then
+        racket compiler.rkt < $1 assembly $3
+    elif [ $2 = '.' ] && [ $3 = '.' ] && [ $4 != '.' ]; then
+        racket compiler.rkt < $1 assembly 0 $4
+    elif [ $2 = '.' ] && [ $3 != '.' ] && [ $4 != '.' ]; then
+        racket compiler.rkt < $1 assembly $3 $4
     elif [ $2 != '.' ] && [ $3 = '.' ] && [ $4 = '.' ]; then
         racket compiler.rkt < $1 $2
     elif [ $2 != '.' ] && [ $3 != '.' ] && [ $4 = '.' ]; then
         racket compiler.rkt < $1 $2 $3
+    elif [ $2 != '.' ] && [ $3 = '.' ] && [ $4 != '.' ]; then
+        racket compiler.rkt < $1 $2 0 $4
     elif [ $2 != '.' ] && [ $3 != '.' ] && [ $4 != '.' ]; then
         racket compiler.rkt < $1 $2 $3 $4
     fi
 else
     if [ $2 = '.' ] && [ $3 = '.' ] && [ $4 = '.' ]; then
         racket compiler.rkt < $1 > $5
+    elif [ $2 = '.' ] && [ $3 != '.' ] && [ $4 = '.' ]; then
+        racket compiler.rkt < $1 assembly $3 > $5
+    elif [ $2 = '.' ] && [ $3 = '.' ] && [ $4 != '.' ]; then
+        racket compiler.rkt < $1 assembly 0 $4 > $5
+    elif [ $2 = '.' ] && [ $3 != '.' ] && [ $4 != '.' ]; then
+        racket compiler.rkt < $1 assembly $3 $4 > $5
     elif [ $2 != '.' ] && [ $3 = '.' ] && [ $4 = '.' ]; then
         racket compiler.rkt < $1 $2 > $5
     elif [ $2 != '.' ] && [ $3 != '.' ] && [ $4 = '.' ]; then
         racket compiler.rkt < $1 $2 $3 > $5
+    elif [ $2 != '.' ] && [ $3 = '.' ] && [ $4 != '.' ]; then
+        racket compiler.rkt < $1 $2 0 $4 > $5
     elif [ $2 != '.' ] && [ $3 != '.' ] && [ $4 != '.' ]; then
         racket compiler.rkt < $1 $2 $3 $4 > $5
     fi
