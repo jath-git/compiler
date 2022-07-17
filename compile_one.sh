@@ -51,20 +51,20 @@ if [ $5 = '.' ]; then
     fi
 else
     if [ $2 = '.' ] && [ $3 = '.' ] && [ $4 = '.' ]; then
-        racket compiler.rkt < $1 > $5
+        racket compiler.rkt < $1 > $5 2>$5
     elif [ $2 = '.' ] && [ $3 != '.' ] && [ $4 = '.' ]; then
-        racket compiler.rkt < $1 assembly $3 > $5
+        racket compiler.rkt < $1 assembly $3 > $5 2>$5
     elif [ $2 = '.' ] && [ $3 = '.' ] && [ $4 != '.' ]; then
-        racket compiler.rkt < $1 assembly 0 $4 > $5
+        racket compiler.rkt < $1 assembly 0 $4 > $5 2>$5
     elif [ $2 = '.' ] && [ $3 != '.' ] && [ $4 != '.' ]; then
-        racket compiler.rkt < $1 assembly $3 $4 > $5
+        racket compiler.rkt < $1 assembly $3 $4 > $5 2>$5
     elif [ $2 != '.' ] && [ $3 = '.' ] && [ $4 = '.' ]; then
-        racket compiler.rkt < $1 $2 > $5
+        racket compiler.rkt < $1 $2 > $5 2>$5
     elif [ $2 != '.' ] && [ $3 != '.' ] && [ $4 = '.' ]; then
-        racket compiler.rkt < $1 $2 $3 > $5
+        racket compiler.rkt < $1 $2 $3 > $5 2>$5
     elif [ $2 != '.' ] && [ $3 = '.' ] && [ $4 != '.' ]; then
-        racket compiler.rkt < $1 $2 0 $4 > $5
+        racket compiler.rkt < $1 $2 0 $4 > $5 2>$5
     elif [ $2 != '.' ] && [ $3 != '.' ] && [ $4 != '.' ]; then
-        racket compiler.rkt < $1 $2 $3 $4 > $5
+        racket compiler.rkt < $1 $2 $3 $4 > $5 2>$5
     fi
 fi
