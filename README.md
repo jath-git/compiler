@@ -48,7 +48,7 @@
   </div>
   <!-- project description -->
     <p>
-    A compiler in Racket for a subset of C++. Created testing tools. 
+    A compiler in Racket for a subset of C++. Applied language recognition theories.
     <br />
     </p>
 </div>
